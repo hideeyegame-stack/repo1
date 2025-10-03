@@ -1,0 +1,244 @@
+// Prisma schema for gaming app
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String?  @unique
+  emailVerified DateTime?
+  image         String?
+  phone         String?  @unique
+  points        Int      @default(0)
+  role          Role     @default(USER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  tournaments   Tournament[]        @relation("CreatedTournaments")
+  joins         TournamentJoin[]
+  topups        PointsTopUp[]
+  withdrawals   PointsWithdrawal[]
+  notifications Notification[]
+  storeOrders   StoreOrder[]
+  wins          TournamentResult[]  @relation("Winner")
+  losses        TournamentResult[]  @relation("Loser")
+  decisions     TournamentResult[]  @relation("DecidedBy")
+  topupsProcessed      PointsTopUp[]       @relation("TopupProcessedBy")
+  withdrawalsProcessed PointsWithdrawal[]  @relation("WithdrawalProcessedBy")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @map("refreshToken")
+  access_token      String?  @map("accessToken")
+  expires_at        Int?     @map("expiresAt")
+  token_type        String?  @map("tokenType")
+  scope             String?
+  id_token          String?  @map("idToken")
+  session_state     String?  @map("sessionState")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Tournament {
+  id              String         @id @default(cuid())
+  title           String
+  createdById     String
+  createdBy       User           @relation("CreatedTournaments", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  startAt         DateTime
+  game            Game
+  mode            TournamentMode
+  entryPoints     Int            @default(0)
+  // Store tournament settings as JSON for SQLite compatibility
+  settings        Json
+  status          TournamentStatus @default(OPEN)
+
+  joins           TournamentJoin[]
+  results         TournamentResult[]
+}
+
+model TournamentJoin {
+  id            String     @id @default(cuid())
+  tournamentId  String
+  userId        String
+  paidPoints    Int
+  joinedAt      DateTime   @default(now())
+  proofImageUrl String?
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tournamentId, userId])
+}
+
+model TournamentResult {
+  id            String   @id @default(cuid())
+  tournamentId  String
+  winnerUserId  String?
+  loserUserId   String?
+  proofImageUrl String?
+  decidedAt     DateTime?
+  decidedById   String?
+
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  winner     User?      @relation("Winner", fields: [winnerUserId], references: [id])
+  loser      User?      @relation("Loser", fields: [loserUserId], references: [id])
+  decidedBy  User?      @relation("DecidedBy", fields: [decidedById], references: [id])
+}
+
+model PointsTopUp {
+  id             String   @id @default(cuid())
+  userId         String
+  amount         Int
+  esevaQrUrl     String
+  paymentImageUrl String
+  status         TopUpStatus @default(PENDING)
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+  processedById  String?
+
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  processedBy User? @relation("TopupProcessedBy", fields: [processedById], references: [id])
+}
+
+model PointsWithdrawal {
+  id              String   @id @default(cuid())
+  userId          String
+  amount          Int
+  esevaQrUrl      String
+  status          WithdrawalStatus @default(PENDING)
+  createdAt       DateTime @default(now())
+  processedAt     DateTime?
+  processedById   String?
+
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  processedBy User? @relation("WithdrawalProcessedBy", fields: [processedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String
+  data      Json?
+  createdAt DateTime @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StoreItem {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  type        StoreItemType
+  pricePoints Int
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  orders      StoreOrder[]
+}
+
+model StoreOrder {
+  id           String   @id @default(cuid())
+  userId       String
+  itemId       String
+  quantity     Int      @default(1)
+  totalPoints  Int
+  status       StoreOrderStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+  fulfilledAt  DateTime?
+  note         String?
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item  StoreItem @relation(fields: [itemId], references: [id])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Game {
+  FREE_FIRE
+  OTHER
+}
+
+enum TournamentMode {
+  ONE_VS_ONE
+  TWO_VS_TWO
+  THREE_VS_THREE
+  FOUR_VS_FOUR
+}
+
+enum TournamentStatus {
+  OPEN
+  CLOSED
+  COMPLETED
+}
+
+enum TopUpStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  POINTS_ADDED
+  TOURNAMENT_JOINED
+  TOURNAMENT_CREDENTIALS
+  GAME_RESULT
+  TOURNAMENT_PARTICIPANTS
+}
+
+enum StoreItemType {
+  FREE_FIRE_DIAMONDS
+  GOOGLE_PLAY_GIFT_CARD
+}
+
+enum StoreOrderStatus {
+  PENDING
+  FULFILLED
+  CANCELLED
+}
